@@ -1,4 +1,4 @@
-const Discord = require('discord.js');
+const { EmbedBuilder } = require('discord.js');
 const config = require("../config.json");
 
 module.exports = {
@@ -19,10 +19,15 @@ module.exports = {
             '**?stop** - Stop playing songs.',
         ] 
 
-        const helpEmbed = new Discord.MessageEmbed()
-        .setColor(message.channel.guild.me.displayColor)
+		console.log(message.channel.guild.me)
+
+        const helpEmbed = new EmbedBuilder()
+        .setColor('#eb3d34')
         .setTitle('Help')
         .setDescription(commands.join('\n'))
-        message.channel.send(helpEmbed)
+        message.channel.send({
+			embeds: [ helpEmbed ],
+			//ephemeral: true
+		})
     },
 };

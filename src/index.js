@@ -1,10 +1,20 @@
-const Discord = require('discord.js');
+const { Client, GatewayIntentBits, Collection, ActivityType, EmbedBuilder } = require("discord.js")
 const DisTube = require('distube')
 const { SpotifyPlugin } = require("@distube/spotify");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const config = require("./config.json");
-const bot = new Discord.Client();
 const db = require('quick.db');
+const fs = require('fs');
+
+const bot = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+		GatewayIntentBits.GuildVoiceStates,
+    ]
+});
 
 bot.distube = new DisTube.default(bot, {
 	searchSongs: 1,
@@ -16,21 +26,21 @@ bot.distube = new DisTube.default(bot, {
 	plugins: [new SpotifyPlugin(), new SoundCloudPlugin()],
 })
 
-const fs = require('fs');
-bot.commands = new Discord.Collection();
-const commandFiles = fs.readdirSync('./commands/').filter(file => file.endsWith('.js'));
+bot.commands = new Collection();
 
-for(const file of commandFiles){
+for(const file of fs.readdirSync('./src/commands').filter(file => file.endsWith('.js'))){
     const command = require(`./commands/${file}`);
 	bot.commands.set(command.name, command);
 }
 
 bot.on('ready', () =>{
 	console.log('The bot is now online');
-	bot.user.setActivity(`?help`, { type: "LISTENING" })
+	bot.user.setPresence({
+		activities: [{ name: `?help`, type: ActivityType.Listening }]
+	});
 });
 
-bot.on('message', message => {
+bot.on('messageCreate', message => {
 	if (!message.content.startsWith(config.prefix) || message.author.bot) return;
 
 	const args = message.content.slice(config.prefix.length).trim().split(/ +/);
@@ -50,14 +60,21 @@ bot.on('message', message => {
 });
 
 bot.SendEmbed = (channel, title, text) => {
-	const embed = new Discord.MessageEmbed()
-	.setColor(channel.guild.me.displayColor)
+	if (!channel) return
+	
+	const embed = new EmbedBuilder()
+	.setColor('#eb3d34')
 	.setTitle(title)
 	.setDescription(text)
-	channel.send(embed)
+	channel.send({
+		embeds: [ embed ],
+		//ephemeral: true
+	})
 }
 
 bot.NowPlaying = async (queue) => {
+	if (!queue.textChannel) return
+
 	let guildID = queue.textChannel.guild.id
 
 	if (!queue.songs[0]) return console.log('No songs.')
@@ -76,12 +93,15 @@ bot.NowPlaying = async (queue) => {
 		throw err;
 	}
 
-	const embed = new Discord.MessageEmbed()
-	.setColor(queue.textChannel.guild.me.displayColor)
+	const embed = new EmbedBuilder()
+	.setColor('#eb3d34')
 	.setTitle('Now Playing')
 	.setDescription(`Playing **${song.name}** (${song.formattedDuration})\nRequested by ${song.user.tag}`)
 
-	queue.textChannel.send(embed).then((resultMessage) => {
+	queue.textChannel.send({
+		embeds: [ embed ],
+		//ephemeral: true
+	}).then((resultMessage) => {
 		db.set('NowPlayingMSG.' + guildID, resultMessage.id+':'+resultMessage.channel.id);
 	})
 }
@@ -90,14 +110,18 @@ bot.distube
 	.on('playSong', async (queue, song) => {
 		bot.NowPlaying(queue);
 	})
-	.on('addSong', (queue, song) =>
-		bot.SendEmbed(queue.textChannel, 'Added to Queue', `Added **${song.name}** (${song.formattedDuration}) to the queue.`))
-	.on('addList', (queue, playlist) =>
-		bot.SendEmbed(queue.textChannel, 'Added Playlist to Queue', `Added **${playlist.name}** (${playlist.songs.length} songs) to the queue.`))
+	.on('addSong', (queue, song) => {
+		bot.SendEmbed(queue.textChannel, 'Added to Queue', `Added **${song.name}** (${song.formattedDuration}) to the queue.`)
+	})
+	.on('addList', (queue, playlist) => {
+		bot.SendEmbed(queue.textChannel, 'Added Playlist to Queue', `Added **${playlist.name}** (${playlist.songs.length} songs) to the queue.`)
+	})
 	.on('error', (textChannel, e) => {
 		console.error(e)
 		bot.SendEmbed(textChannel, 'Error', e)
 	})
-	.on("empty", channel => bot.SendEmbed(channel.send, 'Empty', 'Channel is empty, leaving...'))
+	.on("empty", channel => {
+		bot.SendEmbed(channel, 'Empty', 'Channel is empty, leaving...')
+	})
 
 bot.login(config.token);
